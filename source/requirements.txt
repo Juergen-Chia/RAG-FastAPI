@@ -1,0 +1,42 @@
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+streamlit==1.31.0
+
+# Database & Vector Store
+asyncpg==0.29.0
+pgvector==0.2.5
+psycopg2-binary==2.9.9
+
+# Document Processing
+pypdf==4.0.1
+python-docx==1.1.0
+python-multipart==0.0.9
+beautifulsoup4==4.12.3
+lxml==5.1.0
+markdown==3.5.2
+
+# Embeddings & ML - Using Ali Cloud DashScope API (no local model needed)
+numpy==1.26.3
+
+# LLM Integration (OpenAI-compatible for Ali Cloud DashScope)
+openai==1.12.0
+# ollama==0.1.6  # Commented for local LLM
+
+# Search
+google-search-results==2.4.2  # SerpAPI
+
+# Utilities
+pydantic==2.6.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.1
+httpx==0.26.0
+aiofiles==23.2.1
+redis==5.0.1  # For conversation memory caching
+
+# Testing
+pytest==8.0.0
+pytest-asyncio==0.23.4
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+httpx==0.26.0  # Already listed but needed for testing
