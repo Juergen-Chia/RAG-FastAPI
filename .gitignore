@@ -35,6 +35,8 @@ ENV/
 CLAUDE.md
 SESSION*
 tmp-resume-claude.txt
+tmp-claude-session.md
+docs/tmp-claude-session.md
 
 # IDEs
 .vscode/
