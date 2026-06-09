@@ -39,7 +39,6 @@ SESSION*
 # exclude docs folder. source/uploads folder was deleted
 docs/
 
-
 # IDEs
 .vscode/
 .idea/
