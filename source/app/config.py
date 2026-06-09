@@ -36,9 +36,9 @@ class Settings(BaseSettings):
     # )
     # ollama_model: str = Field(default="llama2", alias="OLLAMA_MODEL")
     
-    # Embedding Model - Ali Cloud DashScope text-embedding-v4
+    # Embedding Model - local sentence-transformers (1024-dim, matches pgvector column)
     embedding_model: str = Field(
-        default="text-embedding-v4",
+        default="BAAI/bge-large-en-v1.5",
         alias="EMBEDDING_MODEL"
     )
     embedding_dimension: int = Field(default=1024, alias="EMBEDDING_DIMENSION")

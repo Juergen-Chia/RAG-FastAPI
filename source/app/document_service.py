@@ -116,18 +116,17 @@ class DocumentService:
             # Store chunks with embeddings
             async with db.acquire() as conn:
                 for (chunk_text, chunk_index), embedding in zip(chunks, normalized_embeddings):
-                    # Format as pgvector string: [1,2,3]
                     vector_str = '[' + ','.join(str(x) for x in embedding) + ']'
 
-                    # Embed the vector directly in SQL instead of using parameter
                     await conn.execute(
-                        f"""
+                        """
                         INSERT INTO chunks (document_id, content, chunk_index, embedding, metadata)
-                        VALUES ($1, $2, $3, '{vector_str}'::vector, $4)
+                        VALUES ($1, $2, $3, $4::vector, $5)
                         """,
                         document_id,
                         chunk_text,
                         chunk_index,
+                        vector_str,
                         json.dumps({"length": len(chunk_text)})
                     )
                 

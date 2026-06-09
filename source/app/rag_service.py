@@ -51,21 +51,21 @@ class RAGService:
 
             # SIMPLIFIED: Always search ALL documents (no repository filter)
             async with db.acquire() as conn:
-                sql = f"""
+                sql = """
                     SELECT
                         c.id,
                         c.content,
                         c.metadata,
                         d.name as document_name,
-                        c.embedding <=> '{vector_str}'::vector as distance
+                        c.embedding <=> $1::vector as distance
                     FROM chunks c
                     JOIN documents d ON c.document_id = d.id
                     WHERE c.embedding IS NOT NULL
-                    ORDER BY c.embedding <=> '{vector_str}'::vector
-                    LIMIT $1
+                    ORDER BY c.embedding <=> $1::vector
+                    LIMIT $2
                 """
 
-                all_chunks = await conn.fetch(sql, top_k * 5)
+                all_chunks = await conn.fetch(sql, vector_str, top_k * 5)
                 logger.info(f"Fetched {len(all_chunks)} chunks")
 
                 # Sort by distance (lower is better for cosine distance)

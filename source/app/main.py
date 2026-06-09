@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Agentic RAG API",
     description="Production-grade RAG API with vector and web search",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -428,13 +428,14 @@ async def reprocess_embeddings():
                         vector_str = '[' + ','.join(str(x) for x in emb_array.tolist()) + ']'
 
                         await conn.execute(
-                            f"""
+                            """
                             INSERT INTO chunks (document_id, content, chunk_index, embedding, metadata)
-                            VALUES ($1, $2, $3, '{vector_str}'::vector, $4)
+                            VALUES ($1, $2, $3, $4::vector, $5)
                             """,
                             doc_id,
                             chunk_text,
                             chunk_index,
+                            vector_str,
                             json.dumps({"length": len(chunk_text)})
                         )
 
@@ -523,19 +524,20 @@ async def debug_vector_search(repository_id: int, query: str = "test", top_k: in
         async with db.acquire() as conn:
             # Get ALL chunks with their distances
             all_chunks = await conn.fetch(
-                f"""
+                """
                 SELECT
                     c.id,
                     c.content,
                     d.name as document_name,
-                    c.embedding <=> '{vector_str}'::vector as distance,
-                    1 - (c.embedding <=> '{vector_str}'::vector) as similarity
+                    c.embedding <=> $1::vector as distance,
+                    1 - (c.embedding <=> $1::vector) as similarity
                 FROM chunks c
                 JOIN documents d ON c.document_id = d.id
-                WHERE d.repository_id = $1
+                WHERE d.repository_id = $2
                 AND c.embedding IS NOT NULL
-                ORDER BY c.embedding <=> '{vector_str}'::vector
+                ORDER BY c.embedding <=> $1::vector
                 """,
+                vector_str,
                 repository_id
             )
 
@@ -580,7 +582,7 @@ async def root():
     """Root endpoint."""
     return {
         "message": "Agentic RAG API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "docs": "/docs"
     }
 

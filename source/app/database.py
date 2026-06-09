@@ -65,7 +65,7 @@ class Database:
                 )
             """)
             
-            # Create documents table (repository_id removed - simplified)
+            # Create documents table
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
                     id SERIAL PRIMARY KEY,
@@ -73,6 +73,7 @@ class Database:
                     format VARCHAR(50) NOT NULL,
                     status VARCHAR(50) DEFAULT 'pending',
                     file_path TEXT,
+                    repository_id INTEGER REFERENCES repositories(id) ON DELETE SET NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -103,10 +104,25 @@ class Database:
                 ON chunks USING gin(to_tsvector('english', content))
             """)
 
+            # Migrate IVFFlat → HNSW: IVFFlat requires ~3×lists rows to train correctly;
+            # with small datasets it silently returns empty results for most queries.
+            # HNSW has no minimum row requirement and is generally more accurate.
+            await conn.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_indexes
+                        WHERE indexname = 'idx_chunks_embedding'
+                          AND indexdef ILIKE '%ivfflat%'
+                    ) THEN
+                        DROP INDEX idx_chunks_embedding;
+                    END IF;
+                END $$
+            """)
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_chunks_embedding
-                ON chunks USING ivfflat (embedding vector_cosine_ops)
-                WITH (lists = 100)
+                ON chunks USING hnsw (embedding vector_cosine_ops)
+                WITH (m = 16, ef_construction = 64)
             """)
             
             # Create trigger for updated_at

@@ -31,6 +31,10 @@ ENV/
 .env.local
 .env.example
 
+# CLAUDE files
+CLAUDE.md
+SESSION*
+
 # IDEs
 .vscode/
 .idea/

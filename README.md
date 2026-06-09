@@ -1,15 +1,15 @@
 # RAG API
 
-A production-grade Retrieval-Augmented Generation (RAG) API built with FastAPI, featuring vector similarity search, document processing, and conversation memory.
+A production-grade Retrieval-Augmented Generation (RAG) API built with FastAPI, featuring hybrid vector + keyword search, multi-format document processing, and Redis-backed conversation memory.
 
 ## Features
 
 - **Document Processing**: Upload and process PDF, TXT, MD, DOCX, and HTML files
-- **Vector Search**: Semantic similarity search using pgvector and sentence-transformers embeddings
+- **Vector Search**: Semantic similarity search using pgvector and local sentence-transformers embeddings (BAAI/bge-large-en-v1.5, 1024-dim)
 - **Keyword Search**: Full-text search using PostgreSQL GIN indexes
 - **Hybrid Search**: Combines vector and keyword search for optimal results
-- **Conversation Memory**: Maintains chat context using Redis-backed storage
-- **LLM Integration**: OpenAI-compatible API support for answer generation
+- **Conversation Memory**: Maintains chat context using Redis-backed storage (7-day TTL)
+- **LLM Integration**: Ali Cloud DashScope Qwen models via OpenAI-compatible API
 - **Bulk Upload**: Upload multiple documents in parallel
 - **Web UI**: Streamlit-based interface for easy interaction
 
@@ -24,95 +24,111 @@ A production-grade Retrieval-Augmented Generation (RAG) API built with FastAPI, 
                                 ▼
                         ┌─────────────────┐     ┌─────────────────┐
                         │  Embedding      │     │      Redis      │
-                        │    Service      │     │ Conversation    │
+                        │  DashScope      │     │  Conversation   │
                         └─────────────────┘     └─────────────────┘
                                 │
                                 ▼
                         ┌─────────────────┐
                         │   LLM Service   │
-                        │  (OpenAI API)   │
+                        │  (Qwen / Any    │
+                        │  OpenAI-compat) │
                         └─────────────────┘
 ```
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker Desktop (for PostgreSQL + Redis)
 - Python 3.11+
-- OpenAI API key (or compatible endpoint)
+- Ali Cloud DashScope API key (for LLM only — embeddings now run locally)
+- SerpAPI key (optional — web search is currently disabled)
 
 ## Quick Start
 
-### 1. Clone and Setup
+### 1. Start Infrastructure
+
+From the project root:
 
 ```bash
-cd RAG-FastAPI-v02
-```
-
-### 2. Start Infrastructure
-
-```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 This starts:
-- PostgreSQL 16 with pgvector on port 5432
-- Redis 7 on port 6379
+- PostgreSQL 16 with pgvector on port `5432`
+- Redis 7 on port `6379`
 
-### 3. Configure Environment
-
-Copy `.env.example` to `source/.env` and update:
+Verify both are healthy:
 
 ```bash
-cp .env.example source/.env
+docker compose ps
 ```
 
-Edit `source/.env` with your values:
+### 2. Configure Environment
+
+Create `source/.env`:
 
 ```env
-# LLM (Ali Cloud Qwen model)
-OPENAI_MODEL=qwen3-max-preview
-
-# Embeddings (Ali Cloud text embedding model)
-EMBEDDING_MODEL=text-embedding-v4
-
-# Optional: Web Search (SerpAPI)
+# Required
+OPENAI_API_KEY=your_dashscope_api_key_here
 SERPAPI_API_KEY=your_serpapi_key_here
+
+# LLM (Ali Cloud DashScope — Qwen models)
+OPENAI_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+OPENAI_MODEL=qwen-plus
+
+# Embeddings (local model — downloads ~1.3 GB from HuggingFace on first run)
+EMBEDDING_MODEL=BAAI/bge-large-en-v1.5
+EMBEDDING_DIMENSION=1024
+
+# Database (matches docker-compose.yml defaults — no changes needed)
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=password
+POSTGRES_DB=rag_db
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+
+# Redis (matches docker-compose.yml defaults — no changes needed)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+
+# Chunking
+CHUNK_SIZE=1000
+CHUNK_OVERLAP=200
+MAX_CONVERSATION_HISTORY=10
 ```
 
-### 4. Install Dependencies
+> `OPENAI_API_KEY` and `SERPAPI_API_KEY` are required — the app will not start without them.
+
+### 3. Install Dependencies
 
 ```bash
 cd source
 pip install -r requirements.txt
 ```
 
-### 5. Run the Application
+### 4. Run the Application
 
-**Start FastAPI Backend:**
+**FastAPI backend** (from `source/`):
 
 ```bash
-# Windows
-start.bat
-
-# Linux/Mac
-./start.sh
-
-# Or manually:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-**Start Streamlit Frontend (separate terminal):**
+The schema (`repositories`, `documents`, `chunks`, indexes) is created automatically on first startup.
+
+**Streamlit frontend** (separate terminal, from `source/`):
 
 ```bash
-cd source
 streamlit run streamlit_app.py --server.port 8501
 ```
 
-### 6. Access the Application
+### 5. Access the Application
 
-- **API Documentation**: http://localhost:8000/docs
-- **Streamlit UI**: http://localhost:8501
-- **Health Check**: http://localhost:8000/health
+| Service | URL |
+|---------|-----|
+| API Documentation | http://localhost:8000/docs |
+| Streamlit UI | http://localhost:8501 |
+| Health Check | http://localhost:8000/health |
 
 ## API Endpoints
 
@@ -140,16 +156,17 @@ streamlit run streamlit_app.py --server.port 8501
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/search` | Perform RAG search with LLM |
+| POST | `/search` | Perform RAG search with LLM answer |
 
 ### Health & Debug
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Check service health |
-| GET | `/debug/chunks` | View chunk information |
-| GET | `/debug/vector-search` | Test vector search |
-| POST | `/debug/reprocess-embeddings` | Reprocess document embeddings |
+| GET | `/debug/chunks` | View stored chunks |
+| GET | `/debug/vector-search` | Test vector similarity |
+| GET | `/debug/pgvector-version` | Check pgvector version |
+| POST | `/debug/reprocess-embeddings` | Reprocess all embeddings |
 
 ## Usage Examples
 
@@ -213,79 +230,65 @@ print(response.json()["answer"])
 
 ### Embedding Model
 
-Default: `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions)
+Default: `BAAI/bge-large-en-v1.5` via local sentence-transformers (1024 dimensions, ~1.3 GB, downloaded from HuggingFace on first run and cached at `~/.cache/huggingface`).
 
-To use a different model, update `EMBEDDING_MODEL` and `EMBEDDING_DIMENSION` in `.env`.
+To use a different model, update `EMBEDDING_MODEL` and `EMBEDDING_DIMENSION` in `.env`. If you change dimensions, drop and recreate the `chunks` table (or run `POST /debug/reprocess-embeddings`).
 
 ### LLM Provider
 
-The API supports any OpenAI-compatible endpoint. Configure via:
-
-```env
-# LLM (Ali Cloud Qwen model)
-OPENAI_MODEL=qwen3-max-preview
-
-# Embeddings (Ali Cloud text embedding model)
-EMBEDDING_MODEL=text-embedding-v4
-
-# Optional: Web Search (SerpAPI)
-SERPAPI_API_KEY=your_serpapi_key_here
-```
+Any OpenAI-compatible endpoint. Configure via `OPENAI_BASE_URL`, `OPENAI_MODEL`, and `OPENAI_API_KEY` in `.env`.
 
 ## Project Structure
 
 ```
-RAG-FastAPI-v02/
-├── docker-compose.yml          # Infrastructure services
-├── requirements.txt            # Python dependencies
-├── source/
-│   ├── app/
-│   │   ├── main.py            # FastAPI application
-│   │   ├── config.py          # Configuration settings
-│   │   ├── database.py        # Database connection
-│   │   ├── models.py          # Pydantic models
-│   │   ├── rag_service.py     # RAG orchestration
-│   │   ├── embedding_service.py  # Vector embeddings
-│   │   ├── llm_service.py     # LLM integration
-│   │   ├── document_service.py    # Document CRUD
-│   │   ├── document_processor.py  # Text extraction
-│   │   ├── repository_service.py  # Repository CRUD
-│   │   ├── conversation_memory.py # Chat history
-│   │   └── web_search_service.py  # Web search (optional)
-│   ├── streamlit_app.py       # Web UI
-│   ├── .env                   # Environment variables
-│   ├── requirements.txt       # Source dependencies
-│   └── uploads/               # Uploaded documents
-└── README.md
+RAG-FastAPI/
+├── docker-compose.yml          # PostgreSQL 16 + pgvector, Redis 7
+├── README.md
+└── source/
+    ├── app/
+    │   ├── main.py             # FastAPI application + endpoints
+    │   ├── config.py           # Pydantic settings (reads .env)
+    │   ├── database.py         # Connection pool + schema init
+    │   ├── models.py           # Pydantic request/response schemas
+    │   ├── rag_service.py      # Hybrid search + LLM orchestration
+    │   ├── embedding_service.py   # DashScope embeddings (batch=10)
+    │   ├── llm_service.py         # LLM completion + conversation history
+    │   ├── document_service.py    # Document upload + chunking pipeline
+    │   ├── document_processor.py  # PDF/TXT/MD/DOCX/HTML extraction
+    │   ├── repository_service.py  # Repository CRUD
+    │   ├── conversation_memory.py # Redis conversation storage
+    │   └── web_search_service.py  # SerpAPI (disabled)
+    ├── migrations/
+    │   └── 002_add_rbac.sql    # Optional RBAC schema (not applied)
+    ├── streamlit_app.py        # Web UI
+    ├── verify_setup.py         # Infrastructure connectivity check
+    ├── requirements.txt
+    └── uploads/                # Uploaded document storage
 ```
-
-## Development
-
-### Database Migrations
-
-SQL migrations are located in `source/migrations/`.
-
-### Debugging
-
-Use the debug endpoints to inspect:
-- `/debug/chunks` - View stored chunks and embeddings
-- `/debug/vector-search` - Test vector similarity
-- `/debug/pgvector-version` - Check pgvector installation
 
 ## Troubleshooting
 
+**Docker containers conflict on startup**
+```bash
+docker compose down -v
+docker compose up -d
+```
+
 **Database connection error**
-- Ensure Docker containers are running: `docker-compose ps`
-- Check DATABASE_URL in `.env`
+- Verify containers are running and healthy: `docker compose ps`
+- Check `POSTGRES_*` values in `source/.env`
+
+**pgAdmin connection refused / password error**
+- Run `docker compose down -v && docker compose up -d` to reset the volume with correct credentials
+- Connect with: host `localhost`, port `5432`, user `postgres`, password `password`
 
 **Embedding dimension mismatch**
-- Verify `EMBEDDING_DIMENSION` matches your model
-- Reprocess embeddings: `POST /debug/reprocess-embeddings`
+- Verify `EMBEDDING_DIMENSION` in `.env` matches your model (default: `1024` for text-embedding-v4)
+- Reprocess: `POST /debug/reprocess-embeddings`
 
 **LLM API errors**
-- Check OPENAI_API_KEY is valid
-- Verify OPENAI_BASE_URL is accessible
+- Verify `OPENAI_API_KEY` is a valid DashScope key
+- Verify `OPENAI_BASE_URL` is reachable from your machine
 
-## License
-
-MIT License
+**App won't start — validation error**
+- `OPENAI_API_KEY` and `SERPAPI_API_KEY` have no defaults and must be present in `source/.env`

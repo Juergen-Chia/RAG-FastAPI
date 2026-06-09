@@ -296,7 +296,7 @@ def search_query(
         if conversation_id:
             payload["conversation_id"] = conversation_id
 
-        response = requests.post(f"{API_BASE_URL}/search", json=payload)
+        response = requests.post(f"{API_BASE_URL}/search", json=payload, timeout=120)
         response.raise_for_status()
         return response.json()
     except Exception as e:

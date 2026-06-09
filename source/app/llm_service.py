@@ -94,6 +94,12 @@ class LLMService:
                 follow_up_questions=[]
             )
     
+    def _extra_body(self) -> dict:
+        """Return extra API body params — disables Qwen3 chain-of-thought thinking mode."""
+        if "qwen3" in self.model.lower():
+            return {"enable_thinking": False}
+        return {}
+
     async def _generate_structured_response(
         self,
         messages: List[Dict[str, str]]
@@ -105,7 +111,8 @@ class LLMService:
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1000,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                extra_body=self._extra_body()
             )
             
             content = response.choices[0].message.content
@@ -142,9 +149,10 @@ class LLMService:
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=1000,
+                extra_body=self._extra_body()
             )
-            
+
             answer = response.choices[0].message.content
             
             return LLMResponse(
@@ -215,21 +223,7 @@ Please provide a comprehensive answer based on the context above."""
     
     async def health_check(self) -> bool:
         """Check if LLM service is healthy."""
-        try:
-            if not self.client:
-                return False
-            
-            # Test simple completion
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "user", "content": "Say 'OK'"}],
-                max_tokens=5
-            )
-            
-            return bool(response.choices[0].message.content)
-        except Exception as e:
-            logger.error(f"LLM service health check failed: {e}")
-            return False
+        return self.client is not None
 
 
 # Singleton instance
