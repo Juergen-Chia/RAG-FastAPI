@@ -122,6 +122,19 @@ class DocumentProcessor:
         
         return text
     
+    def _split_oversized_sentence(self, sentence: str) -> List[str]:
+        """Split a sentence longer than chunk_size at word boundaries."""
+        parts = []
+        while len(sentence) > self.chunk_size:
+            split_at = sentence.rfind(' ', 0, self.chunk_size)
+            if split_at == -1:
+                split_at = self.chunk_size
+            parts.append(sentence[:split_at].strip())
+            sentence = sentence[split_at:].strip()
+        if sentence:
+            parts.append(sentence)
+        return parts
+
     def chunk_text(self, text: str, document_name: str = None, document_metadata: dict = None) -> List[Tuple[str, int]]:
         """
         Split text into chunks with overlap.
@@ -138,7 +151,15 @@ class DocumentProcessor:
         text = self._clean_text(text)
 
         # Split into sentences (simple approach)
-        sentences = re.split(r'[.!?]+\s+', text)
+        raw_sentences = re.split(r'[.!?]+\s+', text)
+
+        # Expand any sentence that exceeds chunk_size into word-boundary sub-pieces
+        sentences = []
+        for s in raw_sentences:
+            if len(s) > self.chunk_size:
+                sentences.extend(self._split_oversized_sentence(s))
+            else:
+                sentences.append(s)
 
         chunks = []
         current_chunk = []
