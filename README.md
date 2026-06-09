@@ -70,6 +70,7 @@ Create `source/.env`:
 # Required
 OPENAI_API_KEY=your_dashscope_api_key_here
 SERPAPI_API_KEY=your_serpapi_key_here
+API_KEY=your_secret_api_key_here
 
 # LLM (Ali Cloud DashScope — Qwen models)
 OPENAI_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
@@ -97,7 +98,7 @@ CHUNK_OVERLAP=200
 MAX_CONVERSATION_HISTORY=10
 ```
 
-> `OPENAI_API_KEY` and `SERPAPI_API_KEY` are required — the app will not start without them.
+> `OPENAI_API_KEY`, `SERPAPI_API_KEY`, and `API_KEY` are required — the app will not start without them.
 
 ### 3. Install Dependencies
 
@@ -168,6 +169,17 @@ streamlit run streamlit_app.py --server.port 8501
 | GET | `/debug/pgvector-version` | Check pgvector version |
 | POST | `/debug/reprocess-embeddings` | Reprocess all embeddings |
 
+## Authentication
+
+All endpoints require an `X-API-Key` header. Set `API_KEY` in `source/.env` and pass it with every request.
+
+| Response | Meaning |
+|----------|---------|
+| `401 Unauthorized` | Header missing |
+| `403 Forbidden` | Key is wrong |
+
+The Swagger UI at `http://localhost:8000/docs` has an **Authorize** button (lock icon) where you can enter the key once for all requests in that session.
+
 ## Usage Examples
 
 ### Upload Documents via API
@@ -175,10 +187,12 @@ streamlit run streamlit_app.py --server.port 8501
 ```bash
 # Single document
 curl -X POST "http://localhost:8000/documents" \
+  -H "X-API-Key: your_secret_api_key_here" \
   -F "file=@document.pdf"
 
 # Bulk upload
 curl -X POST "http://localhost:8000/documents/bulk" \
+  -H "X-API-Key: your_secret_api_key_here" \
   -F "files=@doc1.pdf" \
   -F "files=@doc2.pdf"
 ```
@@ -187,6 +201,7 @@ curl -X POST "http://localhost:8000/documents/bulk" \
 
 ```bash
 curl -X POST "http://localhost:8000/search" \
+  -H "X-API-Key: your_secret_api_key_here" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What is the main topic?",
@@ -201,10 +216,13 @@ curl -X POST "http://localhost:8000/search" \
 ```python
 import requests
 
+HEADERS = {"X-API-Key": "your_secret_api_key_here"}
+
 # Upload document
 with open("document.pdf", "rb") as f:
     response = requests.post(
         "http://localhost:8000/documents",
+        headers=HEADERS,
         files={"file": f}
     )
     print(response.json())
@@ -212,6 +230,7 @@ with open("document.pdf", "rb") as f:
 # Search
 response = requests.post(
     "http://localhost:8000/search",
+    headers=HEADERS,
     json={
         "query": "Summarize the document",
         "source": "vector",

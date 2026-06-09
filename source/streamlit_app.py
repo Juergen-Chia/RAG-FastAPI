@@ -1,12 +1,17 @@
 """Streamlit frontend for Agentic RAG application."""
+import os
 import streamlit as st
 import requests
 import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
+_API_HEADERS = {"X-API-Key": os.getenv("API_KEY", "")}
 
 # Cache TTL constants
 HEALTH_CHECK_CACHE_TTL = 30  # seconds
@@ -95,7 +100,7 @@ def check_api_health() -> bool:
 
     # Perform actual health check
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_BASE_URL}/health", headers=_API_HEADERS, timeout=5)
         is_healthy = response.status_code == 200
     except:
         is_healthy = False
@@ -111,7 +116,7 @@ def check_api_health() -> bool:
 def _list_repositories_cached() -> List[Dict[str, Any]]:
     """Cached version of list repositories (internal use)."""
     try:
-        response = requests.get(f"{API_BASE_URL}/repositories")
+        response = requests.get(f"{API_BASE_URL}/repositories", headers=_API_HEADERS)
         response.raise_for_status()
         return response.json()
     except Exception:
@@ -136,7 +141,7 @@ def _list_documents_cached(repository_id: Optional[int] = None) -> List[Dict[str
         if repository_id:
             params["repository_id"] = repository_id
 
-        response = requests.get(f"{API_BASE_URL}/documents", params=params)
+        response = requests.get(f"{API_BASE_URL}/documents", headers=_API_HEADERS, params=params)
         response.raise_for_status()
         return response.json()
     except Exception:
@@ -158,6 +163,7 @@ def create_repository(name: str, description: Optional[str] = None) -> Optional[
     try:
         response = requests.post(
             f"{API_BASE_URL}/repositories",
+            headers=_API_HEADERS,
             json={"name": name, "description": description}
         )
         response.raise_for_status()
@@ -172,7 +178,7 @@ def create_repository(name: str, description: Optional[str] = None) -> Optional[
 def delete_repository(repository_id: int) -> bool:
     """Delete a repository."""
     try:
-        response = requests.delete(f"{API_BASE_URL}/repositories/{repository_id}")
+        response = requests.delete(f"{API_BASE_URL}/repositories/{repository_id}", headers=_API_HEADERS)
         response.raise_for_status()
         # Clear cache after successful deletion
         clear_repositories_cache()
@@ -192,6 +198,7 @@ def upload_document(file, repository_id: Optional[int] = None) -> Optional[Dict[
 
         response = requests.post(
             f"{API_BASE_URL}/documents",
+            headers=_API_HEADERS,
             files=files,
             params=params
         )
@@ -224,6 +231,7 @@ def upload_documents_bulk(files: List, repository_id: Optional[int] = None) -> O
 
         response = requests.post(
             f"{API_BASE_URL}/documents/bulk",
+            headers=_API_HEADERS,
             files=files_data,
             params=params
         )
@@ -260,7 +268,7 @@ def upload_documents_bulk(files: List, repository_id: Optional[int] = None) -> O
 def delete_document(document_id: int) -> bool:
     """Delete a document."""
     try:
-        response = requests.delete(f"{API_BASE_URL}/documents/{document_id}")
+        response = requests.delete(f"{API_BASE_URL}/documents/{document_id}", headers=_API_HEADERS)
         response.raise_for_status()
         # Clear cache after successful deletion
         clear_documents_cache()
@@ -296,7 +304,7 @@ def search_query(
         if conversation_id:
             payload["conversation_id"] = conversation_id
 
-        response = requests.post(f"{API_BASE_URL}/search", json=payload, timeout=120)
+        response = requests.post(f"{API_BASE_URL}/search", headers=_API_HEADERS, json=payload, timeout=120)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -588,12 +596,25 @@ def render_repositories_page():
 
 
 def render_documents_page():
-    """Render documents management page - SIMPLIFIED without repositories."""
+    """Render documents management page."""
     st.markdown('<div class="sub-header">Documents</div>', unsafe_allow_html=True)
 
     # Upload documents (single or multiple)
     with st.expander("📤 Upload Documents", expanded=True):
-        st.info("💡 Documents will be processed with Ali Cloud embeddings and added to the global search")
+
+        # Repository selector
+        repos = list_repositories()
+        if not repos:
+            st.warning("No repositories found. Create a repository first before uploading documents.")
+            return
+
+        repo_options = {repo["name"]: repo["id"] for repo in repos}
+        selected_repo_name = st.selectbox(
+            "Upload to repository",
+            options=list(repo_options.keys()),
+            help="Select the repository this document belongs to"
+        )
+        selected_repo_id = repo_options[selected_repo_name]
 
         # Accept multiple files at once
         uploaded_files = st.file_uploader(
@@ -607,7 +628,7 @@ def render_documents_page():
             if len(uploaded_files) == 1:
                 # Single file upload
                 with st.spinner(f"📤 Uploading '{uploaded_files[0].name}'..."):
-                    doc = upload_document(uploaded_files[0], None)  # No repository
+                    doc = upload_document(uploaded_files[0], selected_repo_id)
 
                 if doc:
                     st.success(f"✅ Document '{uploaded_files[0].name}' uploaded successfully!")
@@ -616,7 +637,7 @@ def render_documents_page():
             else:
                 # Multiple files - use bulk upload endpoint
                 with st.spinner(f"📤 Uploading {len(uploaded_files)} documents..."):
-                    result = upload_documents_bulk(uploaded_files, None)  # No repository
+                    result = upload_documents_bulk(uploaded_files, selected_repo_id)
 
                 if result:
                     # Show upload summary

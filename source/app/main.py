@@ -1,7 +1,8 @@
 """FastAPI application with async endpoints."""
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader
 from contextlib import asynccontextmanager
 from typing import List, Optional
 import logging
@@ -27,6 +28,16 @@ from app.models import (
     SearchResponse,
     HealthResponse
 )
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(api_key: str = Security(_api_key_header)) -> None:
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API key")
+    if api_key != settings.api_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
 
 # Configure logging
 logging.basicConfig(
@@ -65,7 +76,8 @@ app = FastAPI(
     title="Agentic RAG API",
     description="Production-grade RAG API with vector and web search",
     version="2.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    dependencies=[Depends(verify_api_key)]
 )
 
 # CORS middleware
